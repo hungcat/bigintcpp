@@ -60,7 +60,7 @@ class BigInt {
     std::vector<uint_rep> _rep;  // internal representation
 
     /*
-     * Member methods 
+     * Member methods
      */
 
     BigInt& pushUpper(uint_long n);
@@ -73,7 +73,6 @@ class BigInt {
     BigInt& lshift(uint_long num = 1);
 
 public:
-
     /*
      *
      * Publics
@@ -100,9 +99,9 @@ public:
      * CONSTANTS
      */
 
-    static BigInt ZERO;
-    static BigInt ONE;
-    static BigInt TWO;
+    static const BigInt ZERO;
+    static const BigInt ONE;
+    static const BigInt TWO;
 
     /*
      * General
@@ -110,6 +109,7 @@ public:
 
     BigInt& setSize(uint_long s);
     BigInt& flip();
+
     static uint_long bitLength(uint_long num);
     uint_long bitLength() const;
 
@@ -128,6 +128,7 @@ public:
 
     int_long comp(const BigInt& o) const;
     int_long compAbs(const BigInt& o) const;
+
     bool operator<(const BigInt& o) const { return comp(o) < 0; }
     bool operator>(const BigInt& o) const { return comp(o) > 0; }
     bool operator==(const BigInt& o) const { return comp(o) == 0; }
@@ -238,24 +239,25 @@ const uint_long BigInt::BIT_SIZE =
     std::numeric_limits<uint_rep>::digits;          // uint_repのビット長
 const uint_long BigInt::LOWER_MASK = ~(uint_rep)0;  // BIT_SIZE bit lower mask
 const uint_long BigInt::UPPER_MASK = ~LOWER_MASK;   // BIT_SIZE bit upper mask
+
 const uint_long BigInt::DEC_SIZE =
     BIT_SIZE * std::log10(2);  // uint_repの10進長
-const BigInt BigInt::BASE10 = BigInt(10).pow(BigInt::DEC_SIZE);
+const BigInt BigInt::BASE10 =
+    BigInt(10).pow(BigInt::DEC_SIZE);  // 2^BIT_SIZE未満の最大の10のべき乗
 
 // public constants
-// BigInt BigInt::ZERO(0);
-BigInt BigInt::ZERO(BigInt::randInit());  // 乱数初期化に利用
-BigInt BigInt::ONE(1);
-BigInt BigInt::TWO(2);
+// const BigInt BigInt::ZERO(0);
+const BigInt BigInt::ZERO(BigInt::randInit());  // 乱数初期化に利用
+const BigInt BigInt::ONE(1);
+const BigInt BigInt::TWO(2);
 
+// 乱数初期化
 inline uint_long BigInt::randInit() {
     std::random_device rnd;
     std::mt19937 mt32(rnd());     // 32bit mt
     std::mt19937_64 mt64(rnd());  // 64bit mt
     return 0;
 }
-
-
 
 /*
  *
@@ -303,14 +305,14 @@ inline BigInt& BigInt::normalize() {
     return *this;
 }
 // NaN化
-BigInt& BigInt::NaN() {
+inline BigInt& BigInt::NaN() {
     _NaN = true;
     _sign = false;
     _rep.clear();
     return *this;
 }
 // ゼロ化
-BigInt& BigInt::Zero() {
+inline BigInt& BigInt::Zero() {
     _NaN = false;
     _sign = false;
     _rep.assign(1, 0);
@@ -778,7 +780,7 @@ inline bool BigInt::divremTrivial(const BigInt& numer, const BigInt& denom,
 
 // にゅーとんほう
 // std::sqrtは53bitの精度しかない
-uint_rep BigInt::sqrt(uint_long x) {
+inline uint_rep BigInt::sqrt(uint_long x) {
     if (x == 0) return 0;
     uint_long s = 1UL << (bitLength(x) / 2);
     do {
@@ -856,7 +858,7 @@ inline BigInt BigInt::sqrtTrivial() const {
  * Other operations
  */
 
-BigInt BigInt::factorial() const {
+inline BigInt BigInt::factorial() const {
     if (isNaN()) return *this;
     if (isNegative()) return ZERO;
 
