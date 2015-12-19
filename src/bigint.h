@@ -58,7 +58,7 @@ public:
     // public member methods
 
     // 必ずこいつが呼ばれる
-    BigInt(uint_long n) : _NaN(false), _sign(false), _rep() { pushUpper(n); }
+    BigInt(uint_long n) : _NaN(false), _sign(false), _rep() { pushLower(n); }
     BigInt() : BigInt(0UL) {}
     BigInt(int_long n) : BigInt((uint_long)(n < 0 ? -n : n)) {
         _sign = (n < 0);
