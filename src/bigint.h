@@ -16,32 +16,52 @@ using uint_long = std::uint_fast64_t;
 using int_rep = std::int32_t;
 using uint_rep = std::uint32_t;
 
-// 全ての入力としてのBigIntはnormalizedであることを仮定
+/*
+ *
+ *
+ *
+ * Definition
+ *
+ *
+ */
+
 class BigInt {
 
-    // class member variables
+    /*
+     *
+     * Privates
+     *
+     */
 
-    static const uint_long BIT_SIZE =
-        std::numeric_limits<uint_rep>::digits;  // uint_repのビット長
-    static const uint_long DEC_SIZE =
-        BIT_SIZE * std::log10(2);  // uint_repの10進長
-    static const uint_long LOWER_MASK =
-        ~(uint_rep)0;                                 // BIT_SIZE bit lower mask
-    static const uint_long UPPER_MASK = ~LOWER_MASK;  // BIT_SIZE bit upper mask
-    static const uint_rep MASK_MSB =
-        (1UL << (BIT_SIZE - 1));  // MSB of LOWER_MASK
+    /*
+     * Class constants
+     */
+
+    static const uint_long BIT_SIZE;    // uint_repのビット長
+    static const uint_long LOWER_MASK;  // BIT_SIZE bit lower mask
+    static const uint_long UPPER_MASK;  // BIT_SIZE bit upper mask
+
+    static const uint_long DEC_SIZE;  // uint_repの10進長(切り捨て)
+    static const BigInt BASE10;  // 2^BIT_SIZE未満の最大の10のべき乗
+
+    /*
+     * Class variables
+     */
 
     static std::mt19937 mt32;     // 32bit mt
     static std::mt19937_64 mt64;  // 64bit mt
-    static BigInt BASE10;
 
-    // member variables
+    /*
+     * Member variables
+     */
 
     bool _NaN;                   // true: not a number
     bool _sign;                  // true: negative
     std::vector<uint_rep> _rep;  // internal representation
 
-    // private member methods
+    /*
+     * Member methods 
+     */
 
     BigInt& pushUpper(uint_long n);
     BigInt& pushLower(uint_long n);
@@ -52,10 +72,17 @@ class BigInt {
     BigInt& ushift(uint_long num = 1);
     BigInt& lshift(uint_long num = 1);
 
-    std::string toStrAsVector() const;
-
 public:
-    // public member methods
+
+    /*
+     *
+     * Publics
+     *
+     */
+
+    /*
+     * Constructor
+     */
 
     // 必ずこいつが呼ばれる
     BigInt(uint_long n) : _NaN(false), _sign(false), _rep() { pushLower(n); }
@@ -69,19 +96,35 @@ public:
         BigInt::parse(*this, str, radix);
     }
 
+    /*
+     * CONSTANTS
+     */
+
     static BigInt ZERO;
     static BigInt ONE;
     static BigInt TWO;
+
+    /*
+     * General
+     */
 
     BigInt& setSize(uint_long s);
     BigInt& flip();
     static uint_long bitLength(uint_long num);
     uint_long bitLength() const;
 
+    /*
+     * Shift
+     */
+
     BigInt& operator<<=(uint_long num);
     BigInt& operator>>=(uint_long num);
     BigInt operator<<(uint_long num) const;
     BigInt operator>>(uint_long num) const;
+
+    /*
+     * Comparison
+     */
 
     int_long comp(const BigInt& o) const;
     int_long compAbs(const BigInt& o) const;
@@ -100,6 +143,10 @@ public:
     bool isEven() const {
         return !isNaN() && _rep.size() > 0 && !(_rep[0] & 1);
     }
+
+    /*
+     * Basic Arithmetic
+     */
 
     BigInt& operator+=(const BigInt& o);
     BigInt& operator-=(const BigInt& o);
@@ -122,10 +169,12 @@ public:
     BigInt operator*(int_long o) const { return BigInt(*this).operator*=(o); }
 
     BigInt add(const BigInt& o) const;
+
     BigInt sub(const BigInt& o) const;
 
     BigInt mul(const BigInt& o) const;
     BigInt mulTrivial(const BigInt& o) const;
+
     BigInt sqr() const { return mul(*this); }
     BigInt pow(uint_long exp) const;
     BigInt& powSelf(uint_long exp);
@@ -136,20 +185,33 @@ public:
                        BigInt* r);
     static bool divremTrivial(const BigInt& numer, const BigInt& denom,
                               BigInt* q, BigInt* r);
+
     static uint_rep sqrt(uint_long x);
     BigInt sqrt() const;
     BigInt sqrtTrivial() const;
     BigInt sqrtNewton() const;
 
+    /*
+     * Other computations
+     */
+
     BigInt factorial() const;
     static BigInt factorial(uint_long n) { return BigInt(n).factorial(); }
+
+    /*
+     * Parser
+     * Radix Conversion
+     */
 
     static bool parse(BigInt& bint, std::string str, uint_long radix = 10);
     static BigInt parse(const std::string& str, uint_long radix = 10);
     static std::string toStr(const BigInt& bint, uint_long radix = 10);
-    std::string toStr(uint_long radix = 10) const {
-        return toStr(*this, radix);
-    }
+    std::string toStr(uint_long radix = 10) const;
+    std::string toStrAsVector() const;
+
+    /*
+     * Randoms
+     */
 
     // cryptおぷしょんはみじっそう
     static uint_long randInit();
@@ -158,23 +220,52 @@ public:
     static BigInt randomBits(uint_long n, bool crypt = false);
     static BigInt randomLength(uint_long n, bool crypt = false);
 
+    /*
+     * outputs
+     */
+
     friend std::ostream& operator<<(std::ostream& os, const BigInt& bint);
 };
 
-// static member
+/*
+ *
+ * Static constants
+ *
+ */
+
+// private constatns
+const uint_long BigInt::BIT_SIZE =
+    std::numeric_limits<uint_rep>::digits;          // uint_repのビット長
+const uint_long BigInt::LOWER_MASK = ~(uint_rep)0;  // BIT_SIZE bit lower mask
+const uint_long BigInt::UPPER_MASK = ~LOWER_MASK;   // BIT_SIZE bit upper mask
+const uint_long BigInt::DEC_SIZE =
+    BIT_SIZE * std::log10(2);  // uint_repの10進長
+const BigInt BigInt::BASE10 = BigInt(10).pow(BigInt::DEC_SIZE);
+
+// public constants
+// BigInt BigInt::ZERO(0);
+BigInt BigInt::ZERO(BigInt::randInit());  // 乱数初期化に利用
+BigInt BigInt::ONE(1);
+BigInt BigInt::TWO(2);
+
 inline uint_long BigInt::randInit() {
     std::random_device rnd;
     std::mt19937 mt32(rnd());     // 32bit mt
     std::mt19937_64 mt64(rnd());  // 64bit mt
     return 0;
 }
-// BigInt BigInt::ZERO(0);
-BigInt BigInt::ZERO(BigInt::randInit());  // 乱数初期化に利用
-BigInt BigInt::ONE(1);
-BigInt BigInt::TWO(2);
-BigInt BigInt::BASE10 = BigInt(10).pow(BigInt::DEC_SIZE);
 
-// private member methods
+
+
+/*
+ *
+ * Private member methods
+ *
+ */
+
+/*
+ * General
+ */
 
 // 上位桁に追加(BIT_SIZE進数)
 inline BigInt& BigInt::pushUpper(uint_long n) {
@@ -211,12 +302,14 @@ inline BigInt& BigInt::normalize() {
     if (isZero()) _sign = false;
     return *this;
 }
+// NaN化
 BigInt& BigInt::NaN() {
     _NaN = true;
     _sign = false;
     _rep.clear();
     return *this;
 }
+// ゼロ化
 BigInt& BigInt::Zero() {
     _NaN = false;
     _sign = false;
@@ -245,7 +338,15 @@ inline BigInt& BigInt::lshift(uint_long num) {
     return *this;
 }
 
-// public member methods
+/*
+ *
+ * Public member methods
+ *
+ */
+
+/*
+ * General
+ */
 
 // 桁数指定(BIT_SIZE進数)
 inline BigInt& BigInt::setSize(uint_long s) {
@@ -307,6 +408,7 @@ inline uint_long BigInt::bitLength() const {
 /*
  * Shift arithmetic
  */
+
 inline BigInt BigInt::operator<<(uint_long num) const {
     return BigInt(*this).operator<<=(num);
 }
@@ -348,7 +450,7 @@ inline BigInt& BigInt::operator>>=(uint_long num) {
 }
 
 /*
- * Compare
+ * Comparison
  */
 
 // 比較
@@ -781,14 +883,17 @@ BigInt BigInt::factorial() const {
 /*
  * Radix Conversion
  */
+
 inline BigInt BigInt::parse(const std::string& str, uint_long radix) {
     BigInt res;
     parse(res, str, radix);
     return res;
 }
 inline bool BigInt::parse(BigInt& bint, std::string str, uint_long radix) {
+    // ゼロ初期化
     bint.Zero();
 
+    // varidation check
     uint_long size = str.size();
     if (size == 0) return true;
     bool sign = false;
@@ -805,6 +910,7 @@ inline bool BigInt::parse(BigInt& bint, std::string str, uint_long radix) {
         return false;
     }
 
+    // determine bases
     uint_long baseSize;
     BigInt base;
     if (radix == 10) {
@@ -819,6 +925,7 @@ inline bool BigInt::parse(BigInt& bint, std::string str, uint_long radix) {
         base = BigInt(radix).pow(baseSize);
     }
 
+    // main routine
     uint_long q = size / baseSize, r = size % baseSize;
 
     if (r) {
@@ -834,6 +941,9 @@ inline bool BigInt::parse(BigInt& bint, std::string str, uint_long radix) {
     bint._sign = sign;
 }
 
+inline std::string BigInt::toStr(uint_long radix) const {
+    return toStr(*this, radix);
+}
 // trivial
 inline std::string BigInt::toStr(const BigInt& bint, uint_long radix) {
     if (bint.isNaN()) return "NaN";
