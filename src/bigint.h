@@ -782,7 +782,7 @@ inline bool BigInt::divremTrivial(const BigInt& numer, const BigInt& denom,
 // std::sqrtは53bitの精度しかない
 inline uint_rep BigInt::sqrt(uint_long x) {
     if (x == 0) return 0;
-    uint_long s = 1UL << (bitLength(x) / 2);
+    uint_long s = 1UL << (BigInt::bitLength(x) >> 1);
     do {
         s = (s + x / s) >> 1;
     } while (s > x / s || x / (s + 1) >= (s + 1));
@@ -793,7 +793,7 @@ inline BigInt BigInt::sqrtNewton() const {
     if (isNegative()) return BigInt().NaN();
     if (isNaN() || isZero()) return *this;
 
-    BigInt s = ONE << (bitLength() / 2);
+    BigInt s = ONE << (bitLength() >> 1);
     while (s = (s + operator/(s)) >> 1,
            operator<(s.sqr()) || operator>=((s + ONE).sqr()))
         ;
@@ -817,29 +817,32 @@ inline BigInt BigInt::sqrtTrivial() const {
 
     // _u[2n-1] >= floor(b/4)を保証
     uint_long d = BIT_SIZE - BigInt::bitLength(_u[m - 1]);
-    if (m % 2) {
+    if (m & 1) {
         d += BIT_SIZE;
         ++m;
     }
-    if (d % 2) d -= 1;
+    if (d & 1) d -= 1;
+    // u: 2n-place (n >= 1)
     u <<= d;
     uint_long dHalf = d >> 1;
 
-    // init
-    const uint_long n = m >> 1;
-    uint_long j = n - 1;
+    // init (m = 2n (n >= 1))
+    // const uint_long n = m >> 1;
+    // uint_long j = n - 1;
+    uint_long j = m - 2;
 
-    uint_long _uhead =
-        ((uint_long)_u[2 * j + 1] << BIT_SIZE) | _u[2 * j];  // 64bit
-    BigInt s(BigInt::sqrt(_uhead));                          // 32bit
+    uint_long _uhead = ((uint_long)_u[j + 1] << BIT_SIZE) | _u[j];  // 64bit
+    BigInt s(BigInt::sqrt(_uhead));                                 // 32bit
     BigInt r = BigInt(_uhead) - s.sqr();
 
-    while (j--) {
+    while (j) {
+        j -= 2;
+
         BigInt quot, rem;
-        divrem(r.pushLower(_u[2 * j + 1]), s << (dHalf + 1), &quot,
+        divrem(r.pushLower(_u[j + 1]), s << (dHalf + 1), &quot,
                &rem);  // r broken
 
-        r = rem.pushLower(_u[2 * j]) - quot.sqr();  // rem broken
+        r = rem.pushLower(_u[j]) - quot.sqr();  // rem broken
         while (r.isNegative()) {
             r += (quot << 1) - BigInt::ONE;
             quot -= BigInt::ONE;
