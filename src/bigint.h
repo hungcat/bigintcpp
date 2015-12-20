@@ -63,14 +63,14 @@ class BigInt {
      * Member methods
      */
 
-    BigInt& pushUpper(uint_long n);
-    BigInt& pushLower(uint_long n);
-    BigInt& normalize();
-    BigInt& NaN();
-    BigInt& Zero();
-    BigInt& shift(int_long num);
-    BigInt& ushift(uint_long num = 1);
-    BigInt& lshift(uint_long num = 1);
+    BigInt& pushUpper(uint_long n);     // 内部配列の上位桁に追加
+    BigInt& pushLower(uint_long n);     // 内部配列の下位桁に追加
+    BigInt& normalize();                // 正規化
+    BigInt& NaN();                      // NaN化
+    BigInt& Zero();                     // ゼロ化
+    BigInt& shift(int_long num);        // 内部配列単位でシフト
+    BigInt& ushift(uint_long num = 1);  // 左シフト(上位桁方向)
+    BigInt& lshift(uint_long num = 1);  // 右シフト(下位桁方向)
 
 public:
     /*
@@ -107,27 +107,33 @@ public:
      * General
      */
 
-    BigInt& setSize(uint_long s);
-    BigInt& flip();
+    BigInt& setSize(uint_long s);  // 内部配列の長さをセット
+    BigInt& flip();                // 正負を切り替える
 
-    static uint_long bitLength(uint_long num);
-    uint_long bitLength() const;
+    static uint_long bitCount(uint_long num);  // 立っているビットの数
+    static uint_long numOfLeadingZeros(uint_long num);   // MSBからの0の数
+    static uint_long numOfTrailingZeros(uint_long num);  // LSBからの0の数
+    static uint_long bitLength(uint_long num);           // bit長
+    uint_long bitCount() const;            // 立っているビットの数
+    uint_long numOfLeadingZeros() const;   // MSBからの0の数
+    uint_long numOfTrailingZeros() const;  // LSBからの0の数
+    uint_long bitLength() const;           // bit長
 
     /*
      * Shift
      */
 
-    BigInt& operator<<=(uint_long num);
-    BigInt& operator>>=(uint_long num);
-    BigInt operator<<(uint_long num) const;
-    BigInt operator>>(uint_long num) const;
+    BigInt& operator<<=(uint_long num);      // 左シフト(bit単位)
+    BigInt& operator>>=(uint_long num);      // 右シフト(bit単位)
+    BigInt operator<<(uint_long num) const;  // 左シフト(bit単位)
+    BigInt operator>>(uint_long num) const;  // 右シフト(bit単位)
 
     /*
      * Comparison
      */
 
-    int_long comp(const BigInt& o) const;
-    int_long compAbs(const BigInt& o) const;
+    int_long comp(const BigInt& o) const;     // 比較
+    int_long compAbs(const BigInt& o) const;  // 絶対値比較
 
     bool operator<(const BigInt& o) const { return comp(o) < 0; }
     bool operator>(const BigInt& o) const { return comp(o) > 0; }
@@ -270,6 +276,7 @@ inline uint_long BigInt::randInit() {
  */
 
 // 上位桁に追加(BIT_SIZE進数)
+// (0の場合は追加しない)
 inline BigInt& BigInt::pushUpper(uint_long n) {
     if (isNaN()) return *this;
 
@@ -364,37 +371,87 @@ inline BigInt& BigInt::flip() {
     _sign = !_sign;
     return *this;
 }
-// numのビット長を返す(最大64bit)
-inline uint_long BigInt::bitLength(uint_long num) {
-    if (num == 0) return 0;
 
+// 64bit counter
+inline uint_long BigInt::bitCount(uint_long num) {
+    num -= num >> 1 & 0x5555555555555555;
+    num = (num & 0x3333333333333333) + (num >> 2 & 0x3333333333333333);
+    num = (num + (num >> 4)) & 0x0F0F0F0F0F0F0F0F;
+    num += num >> 8;
+    num += num >> 16;
+    return (num + (num >> 32)) & 0xFF;
+}
+
+// numのMSBから続く0の長さを返す(64bit)
+// bitlength := 64 - NLZ
+inline uint_long BigInt::numOfLeadingZeros(uint_long num) {
     const uint_rep bitsize = 64;
-    uint_rep c = 0;
 
-    if (num & 0xFFFFFFFF00000000) {
-        num &= 0xFFFFFFFF00000000;
+    if (num == 0) return bitsize;
+
+    uint_rep c = 0, t;
+
+    t = num & 0xFFFFFFFF00000000;
+    if (t) {
+        num = t;
         c |= 0x20;
     }
-    if (num & 0xFFFF0000FFFF0000) {
-        num &= 0xFFFF0000FFFF0000;
+    t = num & 0xFFFF0000FFFF0000;
+    if (t) {
+        num = t;
         c |= 0x10;
     }
-    if (num & 0xFF00FF00FF00FF00) {
-        num &= 0xFF00FF00FF00FF00;
+    t = num & 0xFF00FF00FF00FF00;
+    if (t) {
+        num = t;
         c |= 0x08;
     }
-    if (num & 0xF0F0F0F0F0F0F0F0) {
-        num &= 0xF0F0F0F0F0F0F0F0;
+    t = num & 0xF0F0F0F0F0F0F0F0;
+    if (t) {
+        num = t;
         c |= 0x04;
     }
-    if (num & 0xCCCCCCCCCCCCCCCC) {
-        num &= 0xCCCCCCCCCCCCCCCC;
+    t = num & 0xCCCCCCCCCCCCCCCC;
+    if (t) {
+        num = t;
         c |= 0x02;
     }
     if (num & 0xAAAAAAAAAAAAAAAA) {
         c |= 0x01;
     }
-    return bitsize - (c ^ (bitsize - 1));
+    return c ^ (bitsize - 1);
+}
+// numのLSBから続く0の長さを返す(64bit)
+inline uint_long BigInt::numOfTrailingZeros(uint_long num) {
+    if (num == 0) return 64;
+    return bitCount((~num) & (num - 1));
+}
+// numのビット長を返す(最大64bit)
+// floor(log_2{num}) := bitlength - 1
+// NLZ := 64 - bitlength
+inline uint_long BigInt::bitLength(uint_long num) {
+    return 64 - BigInt::numOfLeadingZeros(num);
+}
+// numのMSBから続く0の長さを返す(64bit)
+// 配列が過剰に用意されている場合であっても、0埋めされているとしてカウントする
+inline uint_long BigInt::numOfLeadingZeros() const {
+    if (isNaN()) return -1;
+
+    uint_long s = _rep.size(), i = s;
+    if (s == 0) return 0;
+    while (--i && _rep[i] == 0)
+        ;
+    return ((s - 1) - i) * BIT_SIZE + numOfLeadingZeros(_rep[i]);
+}
+// numのLSBから続く0の長さを返す(64bit)
+inline uint_long BigInt::numOfTrailingZeros() const {
+    if (isNaN()) return -1;
+
+    uint_long s = _rep.size(), i = 0;
+    if (s == 0) return 0;
+    for (i = 0; i < s - 1 && _rep[i] == 0; ++i)
+        ;
+    return i * BIT_SIZE + numOfTrailingZeros(_rep[i]);
 }
 // 自身のビット長を返す
 inline uint_long BigInt::bitLength() const {
