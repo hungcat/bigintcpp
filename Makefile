@@ -37,7 +37,7 @@ ifeq (run, $(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-run: 
+run: $(TARGET)
 	./$(TARGET) $(RUN_ARGS)
 
 -include $(DEPENDS)

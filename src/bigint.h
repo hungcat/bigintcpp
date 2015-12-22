@@ -2,14 +2,15 @@
 #define HUNGCAT_BIGINT_CPP
 
 #include <iostream>
+#include <iomanip>
+#include <cstdlib>
 #include <cstdint>
-#include <vector>
 #include <cmath>
+#include <vector>
 #include <algorithm>
 #include <limits>
 #include <random>
 #include <sstream>
-#include <iomanip>
 
 using int_long = std::int_fast64_t;
 using uint_long = std::uint_fast64_t;
@@ -43,6 +44,8 @@ class BigInt {
 
     static const uint_long DEC_SIZE;  // uint_repの10進長(切り捨て)
     static const BigInt BASE10;  // 2^BIT_SIZE未満の最大の10のべき乗
+
+    static const std::string NUMBER_LIST;  // 数値表現用リスト
 
     /*
      * Class variables
@@ -189,10 +192,13 @@ public:
     BigInt div(const BigInt& o, BigInt* rem = NULL) const;
     BigInt rem(const BigInt& o, BigInt* div = NULL) const;
     static bool divrem(const BigInt& numer, const BigInt& denom, BigInt* q,
+
                        BigInt* r);
     static bool divremTrivial(const BigInt& numer, const BigInt& denom,
                               BigInt* q, BigInt* r);
 
+
+    // 型のbit長でmoduloをとられた分だけシフトする(32とかは注意)
     static uint_rep sqrt(uint_long x);
     BigInt sqrt() const;
     BigInt sqrtTrivial() const;
@@ -205,6 +211,10 @@ public:
     BigInt factorial() const;
     static BigInt factorial(uint_long n) { return BigInt(n).factorial(); }
 
+    static BigInt gcd(const BigInt& a, const BigInt& b);
+    static BigInt basicGcd(const BigInt& a, const BigInt& b);
+    static BigInt binaryGcd(const BigInt& a, const BigInt& b);
+
     /*
      * Parser
      * Radix Conversion
@@ -213,6 +223,7 @@ public:
     static bool parse(BigInt& bint, std::string str, uint_long radix = 10);
     static BigInt parse(const std::string& str, uint_long radix = 10);
     static std::string toStr(const BigInt& bint, uint_long radix = 10);
+    static std::string uintToStr(uint_long num, uint_long radix = 10);
     std::string toStr(uint_long radix = 10) const;
     std::string toStrAsVector() const;
 
@@ -221,7 +232,7 @@ public:
      */
 
     // cryptおぷしょんはみじっそう
-    static uint_long randInit();
+    static uint_long initRandom(uint_long s = 0);
     static BigInt randomBound(uint_long n, bool crypt = false);
     static BigInt randomBound(const BigInt& n, bool crypt = false);
     static BigInt randomBits(uint_long n, bool crypt = false);
@@ -251,19 +262,16 @@ const uint_long BigInt::DEC_SIZE =
 const BigInt BigInt::BASE10 =
     BigInt(10).pow(BigInt::DEC_SIZE);  // 2^BIT_SIZE未満の最大の10のべき乗
 
+const std::string BigInt::NUMBER_LIST(
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ");  // 数値表現用リスト
+
 // public constants
-// const BigInt BigInt::ZERO(0);
-const BigInt BigInt::ZERO(BigInt::randInit());  // 乱数初期化に利用
+const BigInt BigInt::ZERO(0);
 const BigInt BigInt::ONE(1);
 const BigInt BigInt::TWO(2);
 
-// 乱数初期化
-inline uint_long BigInt::randInit() {
-    std::random_device rnd;
-    std::mt19937 mt32(rnd());     // 32bit mt
-    std::mt19937_64 mt64(rnd());  // 64bit mt
-    return 0;
-}
+std::mt19937 BigInt::mt32;     // 32bit mt
+std::mt19937_64 BigInt::mt64;  // 64bit mt
 
 /*
  *
@@ -477,15 +485,18 @@ inline BigInt& BigInt::operator<<=(uint_long num) {
     uint_long r = num % BIT_SIZE, r_ = BIT_SIZE - r;
     uint_long s = _rep.size() - 1;
 
-    if (bitLength(_rep[s]) > r_) pushUpper(_rep[s] >> r_);
-    if (s) {
-        while (s--) {
-            // _rep[s + 1] = ((_rep[s + 1] << r) & LOWER_MASK) | _rep[s]
-            _rep[s + 1] = _rep[s + 1] << r | _rep[s] >> r_;
+    // 型のbit長でmoduloをとられた分だけシフトする(32とかは注意)
+    if (r) {
+        if (bitLength(_rep[s]) > r_) pushUpper(_rep[s] >> r_);
+        if (s) {
+            while (s--) {
+                // _rep[s + 1] = ((_rep[s + 1] << r) & LOWER_MASK) | _rep[s]
+                _rep[s + 1] = _rep[s + 1] << r | _rep[s] >> r_;
+            }
         }
+        //	_rep[0] = (_rep[0] << r) & LOWER_MASK;
+        _rep[0] <<= r;
     }
-    //	_rep[0] = (_rep[0] << r) & LOWER_MASK;
-    _rep[0] <<= r;
 
     return ushift(num / BIT_SIZE);
 }
@@ -500,10 +511,13 @@ inline BigInt& BigInt::operator>>=(uint_long num) {
     uint_long r = num % BIT_SIZE, r_ = BIT_SIZE - r;
     uint_long size = _rep.size() - 1;
 
-    for (uint_long s = 0; s < size; s++) {
-        _rep[s] = _rep[s + 1] << r_ | _rep[s] >> r;
+    // 型のbit長でmoduloをとられた分だけシフトする(32とかは注意)
+    if (r) {
+        for (uint_long s = 0; s < size; s++) {
+            _rep[s] = _rep[s + 1] << r_ | _rep[s] >> r;
+        }
+        _rep[size] >>= r;
     }
-    _rep[size] >>= r;
 
     return normalize();
 }
@@ -749,8 +763,8 @@ inline bool BigInt::divremTrivial(const BigInt& numer, const BigInt& denom,
     u._sign = v._sign = false;
 
     // std::cout << "params" << std::endl;
-    // std::cout << u << std::endl;
-    // std::cout << v << std::endl;
+    // std::cout << u.toStrAsVector() << std::endl;
+    // std::cout << v.toStrAsVector() << std::endl;
 
     // u: (m + n)-place, v: n-place
     // n,m >= 1
@@ -772,8 +786,8 @@ inline bool BigInt::divremTrivial(const BigInt& numer, const BigInt& denom,
     v.ushift(m);
 
     // std::cout << "shifted params" << std::endl;
-    // std::cout << u << std::endl;
-    // std::cout << v << std::endl;
+    // std::cout << u.toStrAsVector() << std::endl;
+    // std::cout << v.toStrAsVector() << std::endl;
     // std::cout << m << std::endl;
     // std::cout << n << std::endl;
     // std::cout << d << std::endl;
@@ -942,6 +956,44 @@ inline BigInt BigInt::factorial() const {
     return fact;
 }
 
+inline BigInt BigInt::gcd(const BigInt& a, const BigInt& b) {
+    return binaryGcd(a, b);
+}
+inline BigInt BigInt::basicGcd(const BigInt& a, const BigInt& b) {
+    if (a.isNaN() || b.isNaN()) return BigInt().NaN();
+
+    BigInt u[2] = {a, b};
+    uint_long i = 1;
+    for (uint_long j = 2; j--;)
+        if (u[j].isNegative()) u[j].flip();
+
+    while (!u[i].isZero()) {
+        u[i ^ 1] %= u[i];
+        i ^= 1;
+    }
+
+    return u[i ^ 1];
+}
+inline BigInt BigInt::binaryGcd(const BigInt& a, const BigInt& b) {
+    if (a.isNaN() || b.isNaN()) return BigInt().NaN();
+
+    if (a.isZero()) return b;
+    if (b.isZero()) return a;
+
+    uint_long za = a.numOfTrailingZeros();
+    uint_long zb = b.numOfTrailingZeros();
+    uint_long k = std::min(za, zb);
+    BigInt u[2] = {a >> za, b >> zb};
+
+    while (u[0] != u[1]) {
+        uint_long i = u[0] > u[1] ? 0 : 1;
+        u[i] -= u[i ^ 1];
+        u[i] >>= u[i].numOfTrailingZeros();
+    }
+
+    return u[0] << k;
+}
+
 /*
  * Radix Conversion
  */
@@ -967,7 +1019,16 @@ inline bool BigInt::parse(BigInt& bint, std::string str, uint_long radix) {
             return false;
         }
     }
-    if (str.find_first_not_of("0123456789") != std::string::npos) {
+
+    if (radix < 2 || NUMBER_LIST.size() < radix) {
+        bint.NaN();
+        return false;
+    }
+    // to upper case
+    std::transform(begin(str), end(str), begin(str), ::toupper);
+
+    if (str.find_first_not_of(NUMBER_LIST.substr(0, radix)) !=
+        std::string::npos) {
         bint.NaN();
         return false;
     }
@@ -1001,15 +1062,37 @@ inline bool BigInt::parse(BigInt& bint, std::string str, uint_long radix) {
     }
 
     bint._sign = sign;
+
+    return true;
 }
 
+inline std::string BigInt::uintToStr(uint_long num, uint_long radix) {
+
+    if (radix < 2 || NUMBER_LIST.size() < radix) {
+        return "*** Invalid radix ***";
+    }
+    if (num == 0) return "0";
+
+    std::string str;
+
+    while (num) {
+        str += NUMBER_LIST[num % radix];
+        num /= radix;
+    }
+    std::reverse(begin(str), end(str));
+
+    return str;
+}
 inline std::string BigInt::toStr(uint_long radix) const {
     return toStr(*this, radix);
 }
 // trivial
 inline std::string BigInt::toStr(const BigInt& bint, uint_long radix) {
     if (bint.isNaN()) return "NaN";
-    bool sign = bint._sign;
+
+    if (radix < 2 || NUMBER_LIST.size() < radix) {
+        return "*** Invalid radix ***";
+    }
 
     uint_long baseSize;
     BigInt base;
@@ -1017,13 +1100,12 @@ inline std::string BigInt::toStr(const BigInt& bint, uint_long radix) {
         baseSize = DEC_SIZE;
         base = BASE10;
     } else {
-        // 未対応
-        return "*** Invalid radix ***";
         baseSize = BIT_SIZE * (std::log(2) / std::log(radix));
         if (baseSize == 0) return "*** Invalid radix ***";
         base = BigInt(radix).pow(baseSize);
     }
 
+    bool sign = bint._sign;
     std::string str;
     BigInt numer = bint;
     numer._sign = false;
@@ -1033,14 +1115,16 @@ inline std::string BigInt::toStr(const BigInt& bint, uint_long radix) {
         divrem(numer, base, &quot, &rem);
 
         std::ostringstream oss;
-        oss << std::setfill('0') << std::setw(baseSize) << rem._rep[0];
+        oss << std::setfill('0') << std::setw(baseSize)
+            << uintToStr(rem._rep[0], radix);
         str.insert(0, oss.str());
 
         numer = quot;
     }
 
     uint_long head = 0;
-    while (str[head] == '0') ++head;
+    while (head < str.size() && str[head] == '0') ++head;
+    if (head == str.size()) return "0";
 
     // std::cout << bint.toStrAsVector() << std::endl;
 
@@ -1072,6 +1156,17 @@ inline std::string BigInt::toStrAsVector() const {
 /*
  * Random
  */
+
+// 乱数初期化
+inline uint_long BigInt::initRandom(uint_long s) {
+    if (s == 0) {
+        std::random_device rnd;
+        s = rnd();
+    }
+    BigInt::mt32.seed(s);  // 32bit mt
+    BigInt::mt64.seed(s);  // 64bit mt
+    return 0;
+}
 inline BigInt BigInt::randomBound(uint_long n, bool crypt) {
     if (n == 0) return ZERO;
     if (crypt) return BigInt().NaN();
