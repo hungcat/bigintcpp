@@ -17,12 +17,20 @@ using uint_long = std::uint_fast64_t;
 using int_rep = std::int32_t;
 using uint_rep = std::uint32_t;
 
+class BigInt;
+class MontgomerySystem;
+
 /*
  *
  *
+ * Definition   {{{
  *
- * Definition
  *
+ */
+
+/*
+ *
+ * BigInt {{{
  *
  */
 
@@ -53,6 +61,7 @@ class BigInt {
 
     static std::mt19937 mt32;     // 32bit mt
     static std::mt19937_64 mt64;  // 64bit mt
+    static MontgomerySystem _M;
 
     /*
      * Member variables
@@ -114,20 +123,34 @@ public:
     BigInt& flip();                // 正負を切り替える
 
     static uint_long bitCount(uint_long num);  // 立っているビットの数
-    static uint_long numOfLeadingZeros(uint_long num);   // MSBからの0の数
-    static uint_long numOfTrailingZeros(uint_long num);  // LSBからの0の数
-    static uint_long bitLength(uint_long num);           // bit長
+    template <typename T>
+    static uint_long numOfLeadingZeros(T num);  // MSBからの0の数
+    template <typename T>
+    static uint_long numOfTrailingZeros(T num);  // LSBからの0の数
+    template <typename T>
+    static uint_long bitLength(T num);  // bit長
+
     uint_long bitCount() const;            // 立っているビットの数
     uint_long numOfLeadingZeros() const;   // MSBからの0の数
     uint_long numOfTrailingZeros() const;  // LSBからの0の数
     uint_long bitLength() const;           // bit長
 
+    BigInt& set(uint_long i);
+    BigInt& unset(uint_long i);
+
     /*
-     * Shift
+     * Bit Arithmetic
      */
 
-    BigInt& operator<<=(uint_long num);      // 左シフト(bit単位)
-    BigInt& operator>>=(uint_long num);      // 右シフト(bit単位)
+    BigInt& operator&=(const BigInt& o);
+    BigInt& operator|=(const BigInt& o);
+    BigInt& operator^=(const BigInt& o);
+    BigInt& operator<<=(uint_long num);  // 左シフト(bit単位)
+    BigInt& operator>>=(uint_long num);  // 右シフト(bit単位)
+
+    BigInt operator&(const BigInt& o) const;
+    BigInt operator|(const BigInt& o) const;
+    BigInt operator^(const BigInt& o) const;
     BigInt operator<<(uint_long num) const;  // 左シフト(bit単位)
     BigInt operator>>(uint_long num) const;  // 右シフト(bit単位)
 
@@ -179,34 +202,41 @@ public:
     BigInt operator*(int_long o) const { return BigInt(*this).operator*=(o); }
 
     BigInt add(const BigInt& o) const;
-
     BigInt sub(const BigInt& o) const;
 
     BigInt mul(const BigInt& o) const;
     BigInt mulTrivial(const BigInt& o) const;
 
-    BigInt sqr() const { return mul(*this); }
-    BigInt pow(uint_long exp) const;
-    BigInt& powSelf(uint_long exp);
-
     BigInt div(const BigInt& o, BigInt* rem = NULL) const;
     BigInt rem(const BigInt& o, BigInt* div = NULL) const;
     static bool divrem(const BigInt& numer, const BigInt& denom, BigInt* q,
-
                        BigInt* r);
     static bool divremTrivial(const BigInt& numer, const BigInt& denom,
                               BigInt* q, BigInt* r);
 
+    /*
+     * Other computations
+     */
 
-    // 型のbit長でmoduloをとられた分だけシフトする(32とかは注意)
+    static BigInt mulMod(const BigInt& a, const BigInt& b, const BigInt& n);
+    static BigInt mulMod(const BigInt& a, const BigInt& b,
+                         const MontgomerySystem& M);
+    static BigInt powMod(const BigInt& a, uint_long e, const BigInt& n);
+    static BigInt powMod(const BigInt& a, uint_long e,
+                         const MontgomerySystem& M);
+    BigInt mulMod(const BigInt& o, const BigInt& n);
+    BigInt mulMod(const BigInt& o, const MontgomerySystem& M);
+    BigInt powMod(uint_long e, const BigInt& n);
+    BigInt powMod(uint_long e, const MontgomerySystem& M);
+
+    BigInt sqr() const { return mul(*this); }
+    BigInt pow(uint_long exp) const;
+    BigInt pow(const BigInt& exp) const;
+
     static uint_rep sqrt(uint_long x);
     BigInt sqrt() const;
     BigInt sqrtTrivial() const;
     BigInt sqrtNewton() const;
-
-    /*
-     * Other computations
-     */
 
     BigInt factorial() const;
     static BigInt factorial(uint_long n) { return BigInt(n).factorial(); }
@@ -226,6 +256,7 @@ public:
     static std::string uintToStr(uint_long num, uint_long radix = 10);
     std::string toStr(uint_long radix = 10) const;
     std::string toStrAsVector() const;
+    friend std::ostream& operator<<(std::ostream& os, const BigInt& bint);
 
     /*
      * Randoms
@@ -237,17 +268,110 @@ public:
     static BigInt randomBound(const BigInt& n, bool crypt = false);
     static BigInt randomBits(uint_long n, bool crypt = false);
     static BigInt randomLength(uint_long n, bool crypt = false);
+};
+/*
+ *
+ * }}}
+ *
+ */
 
-    /*
-     * outputs
-     */
+/*
+ *
+ * MontgomerySystem {{{
+ *
+ */
 
-    friend std::ostream& operator<<(std::ostream& os, const BigInt& bint);
+class MontgomerySystem {
+    BigInt N;        // modulus(odd)
+    BigInt Np;       // N * Np == -1 mod R
+    BigInt R2;       // R*R mod N
+    BigInt R_MASK;   // R - 1
+    BigInt NR;       // N*R: limit of arg to reduce
+    uint_long lenR;  // bitlength of R
+                     // BigInt R;   // gcd(R, N) == 1, R = 2^hoge
+
+    bool isValid(const BigInt& x) const { return (!x.isNegative() && x < NR); }
+
+public:
+    MontgomerySystem() : N(), Np(), R2(), R_MASK(), NR(), lenR() {}
+    MontgomerySystem(const BigInt& n) : MontgomerySystem() { setParams(n); }
+
+    bool isSet() const { return !N.isZero(); }
+    const BigInt& getModulus() const { return N; }
+    const BigInt& getR2() const { return R2; }
+
+    bool setParams(const BigInt& n) {
+        if (n.isEven() || n.isNegative()) return false;
+
+        N = n;
+        uint_long nlen = N.bitLength();
+        BigInt R = BigInt::ONE;
+        R <<= nlen;
+        R2 = (R * R) % N;
+        R_MASK = R - 1;
+        lenR = nlen;
+        NR = N << lenR;
+
+        // N*Np ≡ -1 mod R
+        Np = 0; /* 求めるN' */
+        BigInt t = 0;
+        for (uint_long i = 0; i < nlen; ++i) {
+            if (t.isEven()) {
+                /* ゼロになっているビットがあったら、N'のその部分を1にする（NはRと互いに素なので必ず奇数）*/
+                t += N; /* 掛け算だが、二進数一桁の掛け算なので実質は足し算 */
+                Np.set(i); /* N'のその部分を1にする */
+            }
+            t >>= 1; /* 必ず端数が出るが切り捨てる */
+        }
+
+        //      return true;
+        return (((N * Np) + BigInt::ONE) % R).isZero();
+    }
+
+    BigInt& _reduce(BigInt& T) const {
+        if (!isValid(T)) {
+            T %= N;
+            if (T.isNegative()) T += N;
+        }
+        BigInt t = T;
+        T.operator*=(Np)
+            .operator&=(R_MASK)
+            .operator*=(N)
+            .operator+=(t)
+            .operator>>=(lenR);
+        // T = (((T * Np) & R_MASK) * N + T) >> lenR;
+        return (T >= N) ? T.operator-=(N) : T;
+    }
+    BigInt reduce(const BigInt& T) const {
+        BigInt t(T);
+        _reduce(t);
+        return t;
+    }
+    BigInt& _toME(BigInt& T) const { return _reduce(T.operator*=(R2)); }
+    BigInt toME(const BigInt& T) const {
+        BigInt t(T);
+        _toME(t);
+        return t;
+    }
 };
 
 /*
  *
- * Static constants
+ * }}}
+ *
+ */
+
+/*
+ *
+ *
+ * }}}
+ *
+ *
+ */
+
+/*
+ *
+ * Static members {{{
  *
  */
 
@@ -272,15 +396,22 @@ const BigInt BigInt::TWO(2);
 
 std::mt19937 BigInt::mt32;     // 32bit mt
 std::mt19937_64 BigInt::mt64;  // 64bit mt
+MontgomerySystem BigInt::_M;   // for Montgomery Arithmetic
 
 /*
  *
- * Private member methods
+ * }}}
  *
  */
 
 /*
- * General
+ *
+ * Private member methods {{{
+ *
+ */
+
+/*
+ * General {{{
  */
 
 // 上位桁に追加(BIT_SIZE進数)
@@ -356,13 +487,23 @@ inline BigInt& BigInt::lshift(uint_long num) {
 }
 
 /*
+ * }}}
+ */
+
+/*
  *
- * Public member methods
+ * }}}
  *
  */
 
 /*
- * General
+ *
+ * Public member methods {{{
+ *
+ */
+
+/*
+ * General {{{
  */
 
 // 桁数指定(BIT_SIZE進数)
@@ -390,14 +531,15 @@ inline uint_long BigInt::bitCount(uint_long num) {
     return (num + (num >> 32)) & 0xFF;
 }
 
-// numのMSBから続く0の長さを返す(64bit)
-// bitlength := 64 - NLZ
-inline uint_long BigInt::numOfLeadingZeros(uint_long num) {
-    const uint_rep bitsize = 64;
+// numのMSBから続く0の長さを返す
+// bitlength := bitsize(T) - NLZ
+template <typename T>
+inline uint_long BigInt::numOfLeadingZeros(T num) {
+    const uint_long bitsize = std::numeric_limits<T>::digits;
 
     if (num == 0) return bitsize;
 
-    uint_rep c = 0, t;
+    uint_long c = 0, t;
 
     t = num & 0xFFFFFFFF00000000;
     if (t) {
@@ -429,18 +571,21 @@ inline uint_long BigInt::numOfLeadingZeros(uint_long num) {
     }
     return c ^ (bitsize - 1);
 }
-// numのLSBから続く0の長さを返す(64bit)
-inline uint_long BigInt::numOfTrailingZeros(uint_long num) {
-    if (num == 0) return 64;
-    return bitCount((~num) & (num - 1));
+
+// numのLSBから続く0の長さを返す
+template <typename T>
+inline uint_long BigInt::numOfTrailingZeros(T num) {
+    if (num == 0) return std::numeric_limits<T>::digits;
+    return BigInt::bitCount((~num) & (num - 1));
 }
 // numのビット長を返す(最大64bit)
 // floor(log_2{num}) := bitlength - 1
 // NLZ := 64 - bitlength
-inline uint_long BigInt::bitLength(uint_long num) {
-    return 64 - BigInt::numOfLeadingZeros(num);
+template <typename T>
+inline uint_long BigInt::bitLength(T num) {
+    return std::numeric_limits<T>::digits - BigInt::numOfLeadingZeros(num);
 }
-// numのMSBから続く0の長さを返す(64bit)
+// numのMSBから続く0の長さを返す
 // 配列が過剰に用意されている場合であっても、0埋めされているとしてカウントする
 inline uint_long BigInt::numOfLeadingZeros() const {
     if (isNaN()) return -1;
@@ -451,7 +596,7 @@ inline uint_long BigInt::numOfLeadingZeros() const {
         ;
     return ((s - 1) - i) * BIT_SIZE + numOfLeadingZeros(_rep[i]);
 }
-// numのLSBから続く0の長さを返す(64bit)
+// numのLSBから続く0の長さを返す
 inline uint_long BigInt::numOfTrailingZeros() const {
     if (isNaN()) return -1;
 
@@ -472,13 +617,78 @@ inline uint_long BigInt::bitLength() const {
     return s * BIT_SIZE + bitLength(_rep[s]);
 }
 
+inline BigInt& BigInt::set(uint_long i) {
+    if (isNaN()) return *this;
+
+    uint_long s = _rep.size();
+    uint_long q = i / BIT_SIZE, r = i % BIT_SIZE;
+
+    if (q < s) _rep[q] &= 1UL << r;
+
+    return *this;
+}
+inline BigInt& BigInt::unset(uint_long i) {
+    if (isNaN()) return *this;
+
+    uint_long s = _rep.size();
+    uint_long q = i / BIT_SIZE, r = i % BIT_SIZE;
+
+    if (q < s) _rep[q] &= ~(1UL << r);
+
+    return *this;
+}
+
 /*
- * Shift arithmetic
+ * }}}
  */
 
-inline BigInt BigInt::operator<<(uint_long num) const {
-    return BigInt(*this).operator<<=(num);
+/*
+ * Bit Arithmetic {{{
+ */
+
+inline BigInt& BigInt::operator&=(const BigInt& o) {
+    if (o.isNaN()) NaN();
+    if (isNaN()) return *this;
+
+    uint_long s = _rep.size(), os = o._rep.size();
+    if (s < os) {
+        setSize(os);
+        s = os;
+    }
+
+    while (s--) _rep[s] &= o._rep[s];
+
+    return *this;
 }
+inline BigInt& BigInt::operator|=(const BigInt& o) {
+    if (o.isNaN()) NaN();
+    if (isNaN()) return *this;
+
+    uint_long s = _rep.size(), os = o._rep.size();
+    if (s < os) {
+        setSize(os);
+        s = os;
+    }
+
+    while (s--) _rep[s] |= o._rep[s];
+
+    return *this;
+}
+inline BigInt& BigInt::operator^=(const BigInt& o) {
+    if (o.isNaN()) NaN();
+    if (isNaN()) return *this;
+
+    uint_long s = _rep.size(), os = o._rep.size();
+    if (s < os) {
+        setSize(os);
+        s = os;
+    }
+
+    while (s--) _rep[s] ^= o._rep[s];
+
+    return *this;
+}
+
 inline BigInt& BigInt::operator<<=(uint_long num) {
     if (isNaN()) return *this;
 
@@ -500,9 +710,6 @@ inline BigInt& BigInt::operator<<=(uint_long num) {
 
     return ushift(num / BIT_SIZE);
 }
-inline BigInt BigInt::operator>>(uint_long num) const {
-    return BigInt(*this).operator>>=(num);
-}
 inline BigInt& BigInt::operator>>=(uint_long num) {
     if (isNaN()) return *this;
 
@@ -522,8 +729,28 @@ inline BigInt& BigInt::operator>>=(uint_long num) {
     return normalize();
 }
 
+inline BigInt BigInt::operator&(const BigInt& o) const {
+    return BigInt(*this).operator&=(o);
+}
+inline BigInt BigInt::operator|(const BigInt& o) const {
+    return BigInt(*this).operator|=(o);
+}
+inline BigInt BigInt::operator^(const BigInt& o) const {
+    return BigInt(*this).operator^=(o);
+}
+inline BigInt BigInt::operator<<(uint_long num) const {
+    return BigInt(*this).operator<<=(num);
+}
+inline BigInt BigInt::operator>>(uint_long num) const {
+    return BigInt(*this).operator>>=(num);
+}
+
 /*
- * Comparison
+ * }}}
+ */
+
+/*
+ * Comparison {{{
  */
 
 // 比較
@@ -545,7 +772,11 @@ inline int_long BigInt::compAbs(const BigInt& o) const {
 }
 
 /*
- * Addition & Subtraction
+ * }}}
+ */
+
+/*
+ * Addition & Subtraction {{{
  */
 
 // 加算
@@ -557,9 +788,11 @@ inline BigInt& BigInt::operator+=(const BigInt& o) {
         return flip().operator-=(o).flip();
     }
 
-    uint_long os = o._rep.size();
-    if (compAbs(o) < 0) setSize(os);
-    uint_long s = _rep.size();
+    uint_long s = _rep.size(), os = o._rep.size();
+    if (s < os) {
+        setSize(os);
+        s = os;
+    }
 
     uint_long carry = 0;
     for (uint_long i = 0; i < s; i++) {
@@ -589,9 +822,11 @@ inline BigInt& BigInt::operator-=(const BigInt& o) {
         return flip().operator+=(o).flip();
     }
 
-    uint_long os = o._rep.size();
-    if (compAbs(o) < 0) setSize(os);
-    uint_long s = _rep.size();
+    uint_long s = _rep.size(), os = o._rep.size();
+    if (s < os) {
+        setSize(os);
+        s = os;
+    }
 
     uint_long carry = 0;
     for (uint_long i = 0; i < s; i++) {
@@ -620,9 +855,12 @@ inline BigInt BigInt::sub(const BigInt& o) const {
     if (this == &o) return ZERO;
     return BigInt(*this).operator-=(o);
 }
+/*
+ * }}}
+ */
 
 /*
- * Multiplication
+ * Multiplication {{{
  */
 
 // 乗算
@@ -686,29 +924,12 @@ inline BigInt BigInt::mulTrivial(const BigInt& o) const {
 
     return res;
 }
-
-inline BigInt BigInt::pow(uint_long exp) const {
-    return BigInt(*this).powSelf(exp);
-}
-inline BigInt& BigInt::powSelf(uint_long exp) {
-    if (isNaN()) return *this;
-    if (isZero()) {
-        if (exp == 0) return NaN();
-        return *this;
-    }
-
-    BigInt seed((exp & 1) ? *this : ONE);
-
-    while (exp >>= 1, exp) {
-        seed *= seed;
-        if (exp & 1) operator*=(seed);
-    }
-
-    return *this;
-}
+/*
+ * }}}
+ */
 
 /*
- * Division & Remainder
+ * Division & Remainder {{{
  */
 
 // 除算
@@ -774,7 +995,7 @@ inline bool BigInt::divremTrivial(const BigInt& numer, const BigInt& denom,
     q->setSize(m + 1);
 
     // v[n-1]が2^(BIT_SIZE-1)以上になるように正規化
-    uint_long d = BIT_SIZE - BigInt::bitLength(_v[n - 1]);
+    uint_long d = BigInt::numOfLeadingZeros(_v[n - 1]);
     u <<= d;
     v <<= d;
     // u._rep.size()をm + n + 1に
@@ -843,6 +1064,174 @@ inline bool BigInt::divremTrivial(const BigInt& numer, const BigInt& denom,
     // -u = (-v)*  q  - r
 
     return true;
+}
+
+/*
+ * }}}
+ */
+
+/*
+ * Greatest Common Divisor {{{
+ */
+
+inline BigInt BigInt::gcd(const BigInt& a, const BigInt& b) {
+    return binaryGcd(a, b);
+}
+inline BigInt BigInt::basicGcd(const BigInt& a, const BigInt& b) {
+    if (a.isNaN() || b.isNaN()) return BigInt().NaN();
+
+    BigInt u[2] = {a, b};
+    uint_long i = 1;
+    for (uint_long j = 2; j--;)
+        if (u[j].isNegative()) u[j].flip();
+
+    while (!u[i].isZero()) {
+        u[i ^ 1] %= u[i];
+        i ^= 1;
+    }
+
+    return u[i ^ 1];
+}
+inline BigInt BigInt::binaryGcd(const BigInt& a, const BigInt& b) {
+    if (a.isNaN() || b.isNaN()) return BigInt().NaN();
+
+    if (a.isZero()) return b;
+    if (b.isZero()) return a;
+
+    uint_long za = a.numOfTrailingZeros();
+    uint_long zb = b.numOfTrailingZeros();
+    uint_long k = std::min(za, zb);
+    BigInt u[2] = {a >> za, b >> zb};
+
+    while (u[0] != u[1]) {
+        uint_long i = u[0] > u[1] ? 0 : 1;
+        u[i] -= u[i ^ 1];
+        u[i] >>= u[i].numOfTrailingZeros();
+    }
+
+    return u[0] << k;
+}
+
+/*
+ * }}}
+ */
+
+/*
+ * Montgomery Arithmetic {{{
+ */
+
+inline BigInt BigInt::mulMod(const BigInt& o, const BigInt& n) {
+    return mulMod(*this, o, n);
+}
+inline BigInt BigInt::mulMod(const BigInt& a, const BigInt& b,
+                             const BigInt& n) {
+    if (a.isNaN() || b.isNaN() || n.isNaN() || !n.isPositive())
+        return BigInt().NaN();
+
+    if (n.isOdd() && (_M.getModulus() == n || _M.setParams(n)))
+        return mulMod(a, b, _M);
+
+    return (a * b) % n;
+}
+inline BigInt BigInt::mulMod(const BigInt& o, const MontgomerySystem& M) {
+    return mulMod(*this, o, M);
+}
+inline BigInt BigInt::mulMod(const BigInt& a, const BigInt& b,
+                             const MontgomerySystem& M) {
+    if (a.isNaN() || b.isNaN() || !M.isSet()) return BigInt().NaN();
+    return M.toME(M.reduce(a * b));
+}
+inline BigInt BigInt::powMod(uint_long exp, const BigInt& n) {
+    return powMod(*this, exp, n);
+}
+inline BigInt BigInt::powMod(const BigInt& a, uint_long exp, const BigInt& n) {
+    if (a.isNaN() || n.isNaN() || !n.isPositive()) return BigInt().NaN();
+
+    if (n.isOdd() && (_M.getModulus() == n || _M.setParams(n)))
+        return powMod(a, exp, _M);
+
+    if (a.isZero()) {
+        if (exp == 0) return BigInt().NaN();
+        return a;
+    }
+
+    BigInt seed = a % n;
+    BigInt res((exp & 1) ? seed : BigInt::ONE);
+
+    while (exp >>= 1, exp) {
+        seed = seed.sqr() % n;
+        if (exp & 1) res = res * seed % n;
+    }
+
+    return res;
+}
+inline BigInt BigInt::powMod(uint_long exp, const MontgomerySystem& M) {
+    return powMod(*this, exp, M);
+}
+inline BigInt BigInt::powMod(const BigInt& a, uint_long exp,
+                             const MontgomerySystem& M) {
+    if (a.isNaN() || !M.isSet()) return BigInt().NaN();
+
+    if (a.isZero()) {
+        if (exp == 0) return BigInt().NaN();
+        return a;
+    }
+
+    BigInt seed = M.toME(a);
+    BigInt res((exp & 1) ? seed : BigInt::ONE);
+
+    while (exp >>= 1, exp) {
+        seed = seed.mulMod(seed, M);
+        if (exp & 1) res = res.mulMod(seed, M);
+    }
+
+    return res;
+}
+
+/*
+ * }}}
+ */
+
+/*
+ * Other operations {{{
+ */
+
+inline BigInt BigInt::pow(uint_long exp) const {
+    if (isNaN()) return *this;
+
+    if (isZero()) {
+        if (exp == 0) return BigInt().NaN();
+        return *this;
+    }
+
+    BigInt seed(*this);
+    BigInt res((exp & 1) ? seed : ONE);
+
+    while (exp >>= 1, exp) {
+        seed *= seed;
+        if (exp & 1) res *= seed;
+    }
+
+    return res;
+}
+inline BigInt BigInt::pow(const BigInt& exp) const {
+    if (isNaN()) return *this;
+
+    if (isZero()) {
+        if (exp.isZero()) return BigInt().NaN();
+        return *this;
+    }
+
+    BigInt seed(*this);
+    BigInt res(exp.isOdd() ? seed : ONE);
+    BigInt e = exp;
+
+    while (e >>= 1, !e.isZero()) {
+        seed *= seed;
+        if (e.isOdd()) res *= seed;
+    }
+
+    return res;
 }
 
 /*
@@ -927,11 +1316,6 @@ inline BigInt BigInt::sqrtTrivial() const {
 
     return s >>= dHalf;
 }
-
-/*
- * Other operations
- */
-
 inline BigInt BigInt::factorial() const {
     if (isNaN()) return *this;
     if (isNegative()) return ZERO;
@@ -956,46 +1340,12 @@ inline BigInt BigInt::factorial() const {
     return fact;
 }
 
-inline BigInt BigInt::gcd(const BigInt& a, const BigInt& b) {
-    return binaryGcd(a, b);
-}
-inline BigInt BigInt::basicGcd(const BigInt& a, const BigInt& b) {
-    if (a.isNaN() || b.isNaN()) return BigInt().NaN();
-
-    BigInt u[2] = {a, b};
-    uint_long i = 1;
-    for (uint_long j = 2; j--;)
-        if (u[j].isNegative()) u[j].flip();
-
-    while (!u[i].isZero()) {
-        u[i ^ 1] %= u[i];
-        i ^= 1;
-    }
-
-    return u[i ^ 1];
-}
-inline BigInt BigInt::binaryGcd(const BigInt& a, const BigInt& b) {
-    if (a.isNaN() || b.isNaN()) return BigInt().NaN();
-
-    if (a.isZero()) return b;
-    if (b.isZero()) return a;
-
-    uint_long za = a.numOfTrailingZeros();
-    uint_long zb = b.numOfTrailingZeros();
-    uint_long k = std::min(za, zb);
-    BigInt u[2] = {a >> za, b >> zb};
-
-    while (u[0] != u[1]) {
-        uint_long i = u[0] > u[1] ? 0 : 1;
-        u[i] -= u[i ^ 1];
-        u[i] >>= u[i].numOfTrailingZeros();
-    }
-
-    return u[0] << k;
-}
+/*
+ * }}}
+ */
 
 /*
- * Radix Conversion
+ * Radix Conversion {{{
  */
 
 inline BigInt BigInt::parse(const std::string& str, uint_long radix) {
@@ -1153,8 +1503,24 @@ inline std::string BigInt::toStrAsVector() const {
     return oss.str();
 }
 
+// 出力オーバーロード
+inline std::ostream& operator<<(std::ostream& os, const BigInt& bint) {
+    if (bint.isNaN()) {
+        os << "NaN";
+        return os;
+    }
+
+    // for debug
+    // return os << bint.toStrAsVector();
+    return os << bint.toStr();
+}
+
 /*
- * Random
+ * }}}
+ */
+
+/*
+ * Random {{{
  */
 
 // 乱数初期化
@@ -1227,16 +1593,14 @@ inline BigInt BigInt::randomLength(uint_long n, bool crypt) {
     return res;
 }
 
-// 出力オーバーロード
-inline std::ostream& operator<<(std::ostream& os, const BigInt& bint) {
-    if (bint.isNaN()) {
-        os << "NaN";
-        return os;
-    }
+/*
+ * }}}
+ */
 
-    // for debug
-    // return os << bint.toStrAsVector();
-    return os << bint.toStr();
-}
+/*
+ *
+ * }}}
+ *
+ */
 
 #endif
