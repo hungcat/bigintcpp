@@ -1181,11 +1181,11 @@ inline BigInt BigInt::powMod(const BigInt& a, uint_long exp,
     BigInt res((exp & 1) ? seed : BigInt::ONE);
 
     while (exp >>= 1, exp) {
-        seed = seed.mulMod(seed, M);
-        if (exp & 1) res = res.mulMod(seed, M);
+        seed = M.reduce(seed.sqr());
+        if (exp & 1) res = M.reduce(res * seed);
     }
 
-    return res;
+    return M.reduce(res);
 }
 
 /*
